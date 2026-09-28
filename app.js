@@ -1,122 +1,894 @@
-const studentsBody = document.querySelector('#studentsBody');
-const searchInput = document.querySelector('#searchInput');
-const courseFilter = document.querySelector('#courseFilter');
-const modalBackdrop = document.querySelector('#modalBackdrop');
-const form = document.querySelector('#studentForm');
-let currentStudents = [];
-let editingId = null;
-let toastTimer;
+/* =========================================
+   STUDENT MANAGEMENT SYSTEM
+========================================= */
 
-async function api(url, options = {}) {
-  const response = await fetch(url, {headers: {'Content-Type': 'application/json'}, ...options});
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || 'Something went wrong. Please try again.');
-  return body;
+
+/* =========================================
+   STORAGE
+========================================= */
+
+const STORAGE_KEY = "studentManagementData";
+
+
+/* =========================================
+   GET HTML ELEMENTS
+========================================= */
+
+const studentForm =
+    document.getElementById("studentForm");
+
+const studentTable =
+    document.getElementById("studentTable");
+
+const searchInput =
+    document.getElementById("searchInput");
+
+const courseFilter =
+    document.getElementById("courseFilter");
+
+const modalBackground =
+    document.getElementById("modalBackground");
+
+const modalTitle =
+    document.getElementById("modalTitle");
+
+const studentIdInput =
+    document.getElementById("studentId");
+
+const nameInput =
+    document.getElementById("name");
+
+const rollNumberInput =
+    document.getElementById("rollNumber");
+
+const emailInput =
+    document.getElementById("email");
+
+const courseInput =
+    document.getElementById("course");
+
+const yearInput =
+    document.getElementById("year");
+
+const phoneInput =
+    document.getElementById("phone");
+
+const totalStudents =
+    document.getElementById("totalStudents");
+
+const totalCourses =
+    document.getElementById("totalCourses");
+
+const filteredStudents =
+    document.getElementById("filteredStudents");
+
+const showingText =
+    document.getElementById("showingText");
+
+const emptyMessage =
+    document.getElementById("emptyMessage");
+
+
+/* =========================================
+   BUTTONS
+========================================= */
+
+const addStudentButton =
+    document.getElementById("addStudentButton");
+
+const emptyAddButton =
+    document.getElementById("emptyAddButton");
+
+const closeModal =
+    document.getElementById("closeModal");
+
+const cancelButton =
+    document.getElementById("cancelButton");
+
+
+/* =========================================
+   STUDENT ARRAY
+========================================= */
+
+let students = [];
+
+let editingStudentId = null;
+
+
+/* =========================================
+   LOAD DATA
+========================================= */
+
+function loadStudents() {
+
+    const savedData =
+        localStorage.getItem(STORAGE_KEY);
+
+    if (savedData) {
+
+        try {
+
+            students =
+                JSON.parse(savedData);
+
+        } catch (error) {
+
+            console.error(
+                "Error loading student data:",
+                error
+            );
+
+            students = [];
+
+        }
+
+    } else {
+
+        students = [];
+
+    }
+
 }
 
-function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+
+/* =========================================
+   SAVE DATA
+========================================= */
+
+function saveStudents() {
+
+    localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(students)
+    );
+
 }
 
-function initials(name) {
-  return name.trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase();
+
+/* =========================================
+   CREATE UNIQUE ID
+========================================= */
+
+function createId() {
+
+    return Date.now().toString() +
+        Math.random()
+            .toString(36)
+            .substring(2, 9);
+
 }
 
-function renderStudents(students) {
-  currentStudents = students;
-  studentsBody.innerHTML = students.map((student, index) => `<tr>
-    <td><div class="student-cell"><div class="student-avatar avatar-${index % 5}">${escapeHtml(initials(student.full_name))}</div><div><strong>${escapeHtml(student.full_name)}</strong><small>${escapeHtml(student.phone || 'No phone added')}</small></div></div></td>
-    <td><span class="roll-number">${escapeHtml(student.roll_number)}</span></td>
-    <td><span class="course-pill">${escapeHtml(student.course)}</span></td>
-    <td><span class="year-label">Year ${escapeHtml(student.year)}</span></td>
-    <td><a class="email-link" href="mailto:${encodeURIComponent(student.email)}">${escapeHtml(student.email)}</a></td>
-    <td><div class="row-actions"><button class="icon-button edit-button" data-action="edit" data-id="${student.id}" aria-label="Edit ${escapeHtml(student.full_name)}" title="Edit">✎</button><button class="icon-button delete-button" data-action="delete" data-id="${student.id}" aria-label="Delete ${escapeHtml(student.full_name)}" title="Delete">⌫</button></div></td>
-  </tr>`).join('');
-  document.querySelector('#emptyState').hidden = students.length > 0;
-  document.querySelector('#totalStudents').textContent = currentAllCount;
-  document.querySelector('#filteredStudents').textContent = students.length;
-  document.querySelector('#tableSummary').textContent = `Showing ${students.length} ${students.length === 1 ? 'student' : 'students'}`;
+
+/* =========================================
+   GET INITIALS
+========================================= */
+
+function getInitials(name) {
+
+    const words =
+        name.trim().split(" ");
+
+    if (words.length === 1) {
+
+        return words[0]
+            .substring(0, 2)
+            .toUpperCase();
+
+    }
+
+    return (
+        words[0][0] +
+        words[words.length - 1][0]
+    ).toUpperCase();
+
 }
 
-let currentAllCount = 0;
-async function refresh() {
-  const params = new URLSearchParams();
-  if (searchInput.value.trim()) params.set('search', searchInput.value.trim());
-  if (courseFilter.value) params.set('course', courseFilter.value);
-  const [students, courses, allStudents] = await Promise.all([
-    api(`/api/students?${params}`), api('/api/courses'), api('/api/students')
-  ]);
-  const selectedCourse = courseFilter.value;
-  courseFilter.innerHTML = '<option value="">All courses</option>' + courses.map(course => `<option value="${escapeHtml(course)}">${escapeHtml(course)}</option>`).join('');
-  courseFilter.value = selectedCourse;
-  currentAllCount = allStudents.length;
-  document.querySelector('#totalCourses').textContent = courses.length;
-  renderStudents(students);
+
+/* =========================================
+   ESCAPE HTML
+========================================= */
+
+function escapeHTML(value) {
+
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
 }
 
-function openModal(student = null) {
-  editingId = student?.id ?? null;
-  form.reset();
-  document.querySelector('#formError').textContent = '';
-  document.querySelector('#modalTitle').textContent = editingId ? 'Edit student' : 'Add student';
-  document.querySelector('.modal-heading p').textContent = editingId ? 'Update the student details below.' : 'Enter the details below to create a student profile.';
-  document.querySelector('#saveStudentBtn').textContent = editingId ? 'Save changes' : 'Save student';
-  if (student) for (const [key, value] of Object.entries(student)) if (form.elements[key]) form.elements[key].value = value;
-  modalBackdrop.hidden = false;
-  document.body.classList.add('modal-open');
-  form.elements.full_name.focus();
-}
 
-function closeModal() {
-  modalBackdrop.hidden = true;
-  document.body.classList.remove('modal-open');
-}
+/* =========================================
+   UPDATE COURSE FILTER
+========================================= */
 
-function showToast(message) {
-  const toast = document.querySelector('#toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
-}
+function updateCourseFilter() {
 
-document.querySelector('#addStudentBtn').addEventListener('click', () => openModal());
-document.querySelector('#closeModal').addEventListener('click', closeModal);
-document.querySelector('#cancelModal').addEventListener('click', closeModal);
-modalBackdrop.addEventListener('click', event => { if (event.target === modalBackdrop) closeModal(); });
-document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modalBackdrop.hidden) closeModal(); });
-searchInput.addEventListener('input', () => { clearTimeout(searchInput.timer); searchInput.timer = setTimeout(() => refresh().catch(showError), 180); });
-courseFilter.addEventListener('change', () => refresh().catch(showError));
+    const selectedCourse =
+        courseFilter.value;
 
-studentsBody.addEventListener('click', async event => {
-  const button = event.target.closest('button[data-action]');
-  if (!button) return;
-  const student = currentStudents.find(item => item.id === Number(button.dataset.id));
-  if (!student) return;
-  if (button.dataset.action === 'edit') return openModal(student);
-  if (window.confirm(`Delete ${student.full_name} (${student.roll_number})? This cannot be undone.`)) {
-    try { await api(`/api/students/${student.id}`, {method: 'DELETE'}); await refresh(); showToast('Student deleted.'); }
-    catch (error) { showError(error); }
-  }
-});
+    const courses = [
+        ...new Set(
+            students
+                .map(student => student.course)
+                .filter(course => course)
+        )
+    ].sort();
 
-form.addEventListener('submit', async event => {
-  event.preventDefault();
-  const data = Object.fromEntries(new FormData(form));
-  data.year = Number(data.year);
-  const button = document.querySelector('#saveStudentBtn');
-  button.disabled = true;
-  document.querySelector('#formError').textContent = '';
-  try {
-    await api(editingId ? `/api/students/${editingId}` : '/api/students', {
-      method: editingId ? 'PUT' : 'POST', body: JSON.stringify(data)
+    courseFilter.innerHTML =
+        `<option value="">All Courses</option>`;
+
+
+    courses.forEach(course => {
+
+        const option =
+            document.createElement("option");
+
+        option.value = course;
+
+        option.textContent = course;
+
+        courseFilter.appendChild(option);
+
     });
-    closeModal();
-    await refresh();
-    showToast(editingId ? 'Student details updated.' : 'Student added successfully.');
-  } catch (error) { document.querySelector('#formError').textContent = error.message; }
-  finally { button.disabled = false; }
-});
 
-function showError(error) { showToast(error.message || 'Unable to load student records.'); }
-refresh().catch(showError);
+
+    if (courses.includes(selectedCourse)) {
+
+        courseFilter.value =
+            selectedCourse;
+
+    }
+
+}
+
+
+/* =========================================
+   GET FILTERED STUDENTS
+========================================= */
+
+function getFilteredStudents() {
+
+    const search =
+        searchInput.value
+            .trim()
+            .toLowerCase();
+
+    const selectedCourse =
+        courseFilter.value;
+
+
+    return students.filter(student => {
+
+        const matchesSearch =
+            search === "" ||
+
+            student.name
+                .toLowerCase()
+                .includes(search) ||
+
+            student.rollNumber
+                .toLowerCase()
+                .includes(search) ||
+
+            student.email
+                .toLowerCase()
+                .includes(search) ||
+
+            student.course
+                .toLowerCase()
+                .includes(search) ||
+
+            student.year
+                .toLowerCase()
+                .includes(search) ||
+
+            student.phone
+                .toLowerCase()
+                .includes(search);
+
+
+        const matchesCourse =
+            selectedCourse === "" ||
+            student.course === selectedCourse;
+
+
+        return (
+            matchesSearch &&
+            matchesCourse
+        );
+
+    });
+
+}
+
+
+/* =========================================
+   DISPLAY STUDENTS
+========================================= */
+
+function displayStudents() {
+
+    updateCourseFilter();
+
+
+    const filtered =
+        getFilteredStudents();
+
+
+    studentTable.innerHTML = "";
+
+
+    /* UPDATE STATISTICS */
+
+    totalStudents.textContent =
+        students.length;
+
+
+    const courses =
+        new Set(
+            students.map(
+                student => student.course
+            )
+        );
+
+
+    totalCourses.textContent =
+        courses.size;
+
+
+    filteredStudents.textContent =
+        filtered.length;
+
+
+    showingText.textContent =
+        `Showing ${filtered.length} student${filtered.length === 1 ? "" : "s"}`;
+
+
+    /* EMPTY STATE */
+
+    if (filtered.length === 0) {
+
+        emptyMessage.style.display =
+            "block";
+
+    } else {
+
+        emptyMessage.style.display =
+            "none";
+
+    }
+
+
+    /* CREATE TABLE ROWS */
+
+    filtered.forEach(student => {
+
+        const row =
+            document.createElement("tr");
+
+
+        row.innerHTML = `
+
+            <td>
+
+                <div class="student">
+
+                    <div class="student-avatar">
+
+                        ${escapeHTML(
+                            getInitials(student.name)
+                        )}
+
+                    </div>
+
+                    <div class="student-name">
+
+                        ${escapeHTML(
+                            student.name
+                        )}
+
+                    </div>
+
+                </div>
+
+            </td>
+
+
+            <td>
+                ${escapeHTML(
+                    student.rollNumber
+                )}
+            </td>
+
+
+            <td>
+
+                <span class="course-badge">
+
+                    ${escapeHTML(
+                        student.course
+                    )}
+
+                </span>
+
+            </td>
+
+
+            <td>
+                ${escapeHTML(
+                    student.year
+                )}
+            </td>
+
+
+            <td>
+                ${escapeHTML(
+                    student.email
+                )}
+            </td>
+
+
+            <td>
+                ${escapeHTML(
+                    student.phone || "-"
+                )}
+            </td>
+
+
+            <td>
+
+                <div class="actions">
+
+                    <button
+                        class="action-btn"
+                        onclick="editStudent('${student.id}')"
+                        title="Edit"
+                    >
+                        ✏️
+                    </button>
+
+
+                    <button
+                        class="action-btn delete-btn"
+                        onclick="deleteStudent('${student.id}')"
+                        title="Delete"
+                    >
+                        🗑️
+                    </button>
+
+                </div>
+
+            </td>
+
+        `;
+
+
+        studentTable.appendChild(row);
+
+    });
+
+}
+
+
+/* =========================================
+   OPEN ADD MODAL
+========================================= */
+
+function openAddModal() {
+
+    editingStudentId = null;
+
+    modalTitle.textContent =
+        "Add Student";
+
+
+    studentForm.reset();
+
+    studentIdInput.value = "";
+
+
+    modalBackground.classList.add(
+        "show"
+    );
+
+
+    nameInput.focus();
+
+}
+
+
+/* =========================================
+   CLOSE MODAL
+========================================= */
+
+function closeStudentModal() {
+
+    modalBackground.classList.remove(
+        "show"
+    );
+
+    studentForm.reset();
+
+    editingStudentId = null;
+
+}
+
+
+/* =========================================
+   ADD STUDENT
+========================================= */
+
+function addStudent(event) {
+
+    event.preventDefault();
+
+
+    const name =
+        nameInput.value.trim();
+
+    const rollNumber =
+        rollNumberInput.value.trim();
+
+    const email =
+        emailInput.value.trim();
+
+    const course =
+        courseInput.value.trim();
+
+    const year =
+        yearInput.value;
+
+    const phone =
+        phoneInput.value.trim();
+
+
+    /* CHECK ROLL NUMBER */
+
+    const duplicate =
+        students.some(student =>
+
+            student.rollNumber
+                .toLowerCase() ===
+            rollNumber.toLowerCase()
+
+            &&
+
+            student.id !==
+            editingStudentId
+
+        );
+
+
+    if (duplicate) {
+
+        alert(
+            "A student with this roll number already exists."
+        );
+
+        rollNumberInput.focus();
+
+        return;
+
+    }
+
+
+    /* CREATE STUDENT OBJECT */
+
+    const student = {
+
+        id:
+            editingStudentId ||
+            createId(),
+
+        name:
+            name,
+
+        rollNumber:
+            rollNumber,
+
+        email:
+            email,
+
+        course:
+            course,
+
+        year:
+            year,
+
+        phone:
+            phone
+
+    };
+
+
+    /* EDIT */
+
+    if (editingStudentId) {
+
+        const index =
+            students.findIndex(
+                student =>
+                    student.id ===
+                    editingStudentId
+            );
+
+
+        if (index !== -1) {
+
+            students[index] =
+                student;
+
+        }
+
+
+        alert(
+            "Student updated successfully."
+        );
+
+    }
+
+
+    /* ADD */
+
+    else {
+
+        students.push(student);
+
+
+        alert(
+            "Student added successfully."
+        );
+
+    }
+
+
+    /* SAVE */
+
+    saveStudents();
+
+
+    /* REFRESH */
+
+    displayStudents();
+
+
+    /* CLOSE */
+
+    closeStudentModal();
+
+}
+
+
+/* =========================================
+   EDIT STUDENT
+========================================= */
+
+function editStudent(id) {
+
+    const student =
+        students.find(
+            student =>
+                student.id === id
+        );
+
+
+    if (!student) {
+
+        return;
+
+    }
+
+
+    editingStudentId =
+        student.id;
+
+
+    modalTitle.textContent =
+        "Edit Student";
+
+
+    studentIdInput.value =
+        student.id;
+
+
+    nameInput.value =
+        student.name;
+
+
+    rollNumberInput.value =
+        student.rollNumber;
+
+
+    emailInput.value =
+        student.email;
+
+
+    courseInput.value =
+        student.course;
+
+
+    yearInput.value =
+        student.year;
+
+
+    phoneInput.value =
+        student.phone;
+
+
+    modalBackground.classList.add(
+        "show"
+    );
+
+
+    nameInput.focus();
+
+}
+
+
+/* =========================================
+   DELETE STUDENT
+========================================= */
+
+function deleteStudent(id) {
+
+    const student =
+        students.find(
+            student =>
+                student.id === id
+        );
+
+
+    if (!student) {
+
+        return;
+
+    }
+
+
+    const confirmed =
+        confirm(
+            `Are you sure you want to delete ${student.name}?`
+        );
+
+
+    if (!confirmed) {
+
+        return;
+
+    }
+
+
+    students =
+        students.filter(
+            student =>
+                student.id !== id
+        );
+
+
+    saveStudents();
+
+
+    displayStudents();
+
+
+    alert(
+        "Student deleted successfully."
+    );
+
+}
+
+
+/* =========================================
+   SEARCH
+========================================= */
+
+searchInput.addEventListener(
+    "input",
+    displayStudents
+);
+
+
+/* =========================================
+   COURSE FILTER
+========================================= */
+
+courseFilter.addEventListener(
+    "change",
+    displayStudents
+);
+
+
+/* =========================================
+   OPEN ADD BUTTON
+========================================= */
+
+addStudentButton.addEventListener(
+    "click",
+    openAddModal
+);
+
+
+emptyAddButton.addEventListener(
+    "click",
+    openAddModal
+);
+
+
+/* =========================================
+   FORM SUBMIT
+========================================= */
+
+studentForm.addEventListener(
+    "submit",
+    addStudent
+);
+
+
+/* =========================================
+   CLOSE BUTTON
+========================================= */
+
+closeModal.addEventListener(
+    "click",
+    closeStudentModal
+);
+
+
+cancelButton.addEventListener(
+    "click",
+    closeStudentModal
+);
+
+
+/* =========================================
+   CLOSE WHEN CLICKING OUTSIDE MODAL
+========================================= */
+
+modalBackground.addEventListener(
+    "click",
+    function(event) {
+
+        if (
+            event.target ===
+            modalBackground
+        ) {
+
+            closeStudentModal();
+
+        }
+
+    }
+);
+
+
+/* =========================================
+   ESCAPE KEY
+========================================= */
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Escape" &&
+            modalBackground.classList.contains("show")
+        ) {
+
+            closeStudentModal();
+
+        }
+
+    }
+);
+
+
+/* =========================================
+   START APPLICATION
+========================================= */
+
+loadStudents();
+
+displayStudents();
